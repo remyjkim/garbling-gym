@@ -51,8 +51,8 @@ __marimo__/cache/
 
 # Experiment results (keep structure but ignore data)
 run_results/*/
+run_results/.index.db
 !run_results/.gitkeep
-!run_results/.index.db
 
 # OS
 .DS_Store
