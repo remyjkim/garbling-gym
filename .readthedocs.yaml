@@ -1,0 +1,23 @@
+version: 2
+
+sphinx:
+  configuration: docs/conf.py
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.13"
+  jobs:
+    # Install uv (RTD docs show asdf-based install)
+    pre_create_environment:
+      - asdf plugin add uv
+      - asdf install uv latest
+      - asdf global uv latest
+
+    # Create the RTD virtualenv using uv at RTD's expected location
+    create_environment:
+      - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
+
+    # Sync deps from uv.lock into that environment
+    install:
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --frozen --group docs
