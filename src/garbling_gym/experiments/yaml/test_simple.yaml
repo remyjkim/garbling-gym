@@ -1,0 +1,6 @@
+# Simple test experiment
+experiments:
+  - name: quick_test
+    rounds: 3
+    llm: false
+    tags: [test]

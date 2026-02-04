@@ -1,0 +1,11 @@
+# Baseline experiment configuration
+# Standard game with default settings
+
+name: baseline
+num_rounds: 20
+use_llm: false
+
+prior:
+  LOW: 0.3
+  MEDIUM: 0.4
+  HIGH: 0.3

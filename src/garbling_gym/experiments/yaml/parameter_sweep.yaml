@@ -1,0 +1,26 @@
+# Example parameter sweep experiment
+# Tests different combinations of LLM usage
+
+experiments:
+  - name: baseline_no_llm
+    rounds: 10
+    llm: false
+    tags: [baseline, no-llm]
+
+  - name: llm_sender_only
+    rounds: 10
+    llm: true
+    llm_roles: [sender]
+    tags: [llm, sender-only]
+
+  - name: llm_receiver_only
+    rounds: 10
+    llm: true
+    llm_roles: [receiver]
+    tags: [llm, receiver-only]
+
+  - name: both_llm
+    rounds: 10
+    llm: true
+    llm_roles: [sender, receiver]
+    tags: [llm, full-llm]
