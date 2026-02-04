@@ -41,6 +41,12 @@ The framework enables:
 - 🤖 **LLM integration** via pydantic-ai for agent reasoning
 - 💾 **Persistent storage** with SQLite indexing for fast queries
 
+### Example Results
+
+![Simulation Results](images/simulation_results.jpg)
+
+*Visualization of a 50-round game showing cumulative values, receiver decisions, message informativeness distribution, and game summary.*
+
 ---
 
 ## What is Garbling?
