@@ -57,12 +57,10 @@ def __(mo, ResultsStore):
 def __(mo, runs):
     """Filters"""
     if runs:
-        mo.md("## 🔍 Filters")
-
         # Get unique tags
         all_tags = set()
-        for run in runs:
-            tags = run.get('tags', [])
+        for _run in runs:
+            tags = _run.get('tags', [])
             if isinstance(tags, str):
                 tags = [t.strip() for t in tags.split(',') if t.strip()]
             all_tags.update(tags)
@@ -74,18 +72,22 @@ def __(mo, runs):
 
         llm_filter = mo.ui.dropdown(
             options={"All": None, "LLM Only": 1, "No LLM": 0},
-            value=None,
+            value="All",
             label="LLM Usage:"
         )
 
-        filters = mo.hstack([tag_filter, llm_filter], widths="equal", gap=2)
-        filters
+        _output = mo.vstack([
+            mo.md("## 🔍 Filters"),
+            mo.hstack([tag_filter, llm_filter], widths="equal", gap=2)
+        ])
     else:
         tag_filter = None
         llm_filter = None
-        filters = None
+        all_tags = set()
+        _output = mo.md("_No runs to filter_")
 
-    return tag_filter, llm_filter, filters, all_tags
+    _output
+    return tag_filter, llm_filter, all_tags
 
 
 @app.cell
@@ -130,8 +132,6 @@ def __(runs, tag_filter, llm_filter, pd):
 def __(mo, df_runs, filtered_runs):
     """Display runs table"""
     if not df_runs.empty:
-        mo.md(f"## 📊 Experiment Runs ({len(filtered_runs)} runs)")
-
         # Select columns to display
         display_cols = ['id', 'name', 'timestamp', 'num_rounds', 'sender_total',
                         'receiver_total', 'buy_rate', 'avg_informativeness']
@@ -143,113 +143,133 @@ def __(mo, df_runs, filtered_runs):
             page_size=20
         )
 
-        table
+        _table_output = mo.vstack([
+            mo.md(f"## 📊 Experiment Runs ({len(filtered_runs)} runs)"),
+            table
+        ])
     else:
         table = None
-        mo.md("No runs match the filters")
+        display_cols = []
+        _table_output = mo.md("_No runs match the filters_")
 
+    _table_output
     return table, display_cols
 
 
 @app.cell
 def __(mo, table, filtered_runs):
     """Selected runs for comparison"""
-    if table and table.value:
-        selected_indices = [row[0] for row in table.value]
-        selected_runs = [filtered_runs[i] for i in selected_indices]
+    if table is not None and len(table.value) > 0:
+        # table.value is a DataFrame of selected rows
+        # Extract the 'id' column from selected rows
+        selected_ids = table.value['id'].tolist()
 
-        mo.md(f"""
+        # Match selected IDs against filtered_runs
+        selected_runs = [run for run in filtered_runs if run['id'] in selected_ids]
+
+        _selected_output = mo.md(f"""
         ## 🔬 Selected Runs ({len(selected_runs)})
 
         Select 2-5 runs from the table above to compare them.
         """)
     else:
+        selected_ids = []
         selected_runs = []
+        _selected_output = None
 
-    return selected_indices, selected_runs
+    if _selected_output:
+        _selected_output
+
+    return selected_ids, selected_runs
 
 
 @app.cell
 def __(mo, selected_runs, go):
     """Comparison chart"""
     if len(selected_runs) >= 2:
-        mo.md("### Sender vs Receiver Totals")
+        _fig = go.Figure()
 
-        fig = go.Figure()
+        for _run in selected_runs[:5]:  # Limit to 5 runs
+            _run_label = f"{_run.get('name', 'unnamed')[:20]}"
 
-        for run in selected_runs[:5]:  # Limit to 5 runs
-            run_label = f"{run.get('name', 'unnamed')[:20]}"
-
-            fig.add_trace(go.Scatter(
-                x=[run['sender_total']],
-                y=[run['receiver_total']],
+            _fig.add_trace(go.Scatter(
+                x=[_run['sender_total']],
+                y=[_run['receiver_total']],
                 mode='markers+text',
-                name=run_label,
-                text=[run_label],
+                name=_run_label,
+                text=[_run_label],
                 textposition="top center",
                 marker=dict(size=15)
             ))
 
-        fig.update_layout(
+        _fig.update_layout(
             xaxis_title="Sender Total",
             yaxis_title="Receiver Total",
             hovermode='closest',
             height=500
         )
 
-        mo.ui.plotly(fig)
-    return fig, run_label
+        _output_chart = mo.vstack([
+            mo.md("### Sender vs Receiver Totals"),
+            mo.ui.plotly(_fig)
+        ])
+        _output_chart
+    return
 
 
 @app.cell
 def __(mo, selected_runs, go):
     """Buy rate comparison"""
     if len(selected_runs) >= 2:
-        mo.md("### Buy Rate Comparison")
+        _names = [r.get('name', 'unnamed')[:20] for r in selected_runs[:5]]
+        _buy_rates = [r['buy_rate'] * 100 for r in selected_runs[:5]]
 
-        names = [r.get('name', 'unnamed')[:20] for r in selected_runs[:5]]
-        buy_rates = [r['buy_rate'] * 100 for r in selected_runs[:5]]
-
-        fig = go.Figure(data=[go.Bar(
-            x=names,
-            y=buy_rates,
+        _fig = go.Figure(data=[go.Bar(
+            x=_names,
+            y=_buy_rates,
             marker_color='#667eea'
         )])
 
-        fig.update_layout(
+        _fig.update_layout(
             xaxis_title="Run",
             yaxis_title="Buy Rate (%)",
             height=400
         )
 
-        mo.ui.plotly(fig)
-    return names, buy_rates, fig
+        _output_buy = mo.vstack([
+            mo.md("### Buy Rate Comparison"),
+            mo.ui.plotly(_fig)
+        ])
+        _output_buy
+    return
 
 
 @app.cell
 def __(mo, selected_runs, go):
     """Informativeness comparison"""
     if len(selected_runs) >= 2:
-        mo.md("### Informativeness Comparison")
+        _names = [r.get('name', 'unnamed')[:20] for r in selected_runs[:5]]
+        _info_scores = [r['avg_informativeness'] for r in selected_runs[:5]]
 
-        names = [r.get('name', 'unnamed')[:20] for r in selected_runs[:5]]
-        info_scores = [r['avg_informativeness'] for r in selected_runs[:5]]
-
-        fig = go.Figure(data=[go.Bar(
-            x=names,
-            y=info_scores,
+        _fig = go.Figure(data=[go.Bar(
+            x=_names,
+            y=_info_scores,
             marker_color='#4facfe'
         )])
 
-        fig.update_layout(
+        _fig.update_layout(
             xaxis_title="Run",
             yaxis_title="Avg Informativeness",
             height=400,
             yaxis=dict(range=[0, 1])
         )
 
-        mo.ui.plotly(fig)
-    return names, info_scores, fig
+        _output_info = mo.vstack([
+            mo.md("### Informativeness Comparison"),
+            mo.ui.plotly(_fig)
+        ])
+        _output_info
+    return
 
 
 @app.cell
@@ -308,7 +328,7 @@ def __(mo, runs, pd, px):
         df_timeline['date'] = df_timeline['timestamp'].dt.date
         daily_counts = df_timeline.groupby('date').size().reset_index(name='count')
 
-        fig = px.line(
+        _fig = px.line(
             daily_counts,
             x='date',
             y='count',
@@ -316,14 +336,14 @@ def __(mo, runs, pd, px):
             markers=True
         )
 
-        fig.update_layout(
+        _fig.update_layout(
             xaxis_title="Date",
             yaxis_title="Number of Experiments",
             height=400
         )
 
-        mo.ui.plotly(fig)
-    return df_timeline, daily_counts, fig
+        mo.ui.plotly(_fig)
+    return df_timeline, daily_counts
 
 
 @app.cell
