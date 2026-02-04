@@ -57,3 +57,13 @@ run_results/*/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI assistant files
+.ai/
+.claude/
+
+# Assets (not needed in repo)
+*.jpg
+*.jpeg
+*.png
+*.webp
