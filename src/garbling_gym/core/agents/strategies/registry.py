@@ -5,6 +5,7 @@ from typing import Dict, List, Type
 
 from . import ReceiverStrategy
 from .legacy_heuristic import LegacyHeuristicStrategy
+from .bayesian import DirichletBayesianStrategy
 
 
 class ReceiverStrategyRegistry:
@@ -18,6 +19,7 @@ class ReceiverStrategyRegistry:
     def __init__(self) -> None:
         self._classes: Dict[str, Type[ReceiverStrategy]] = {}
         self.register("heuristic", LegacyHeuristicStrategy)
+        self.register("bayesian", DirichletBayesianStrategy)
 
     def register(self, name: str, strategy_class: Type[ReceiverStrategy]) -> None:
         """Register a strategy class under a given name."""
