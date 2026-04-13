@@ -5,7 +5,10 @@ from typing import Dict, List, Type
 
 from . import ReceiverStrategy
 from .legacy_heuristic import LegacyHeuristicStrategy
-from .bayesian import DirichletBayesianStrategy
+from .bayesian import DirichletBayesianStrategy, ThompsonSamplingStrategy
+from .regret import RegretMatchingStrategy, HedgeStrategy
+from .game_theoretic import LevelKStrategy
+from .bandit import BanditStrategy
 
 
 class ReceiverStrategyRegistry:
@@ -20,6 +23,11 @@ class ReceiverStrategyRegistry:
         self._classes: Dict[str, Type[ReceiverStrategy]] = {}
         self.register("heuristic", LegacyHeuristicStrategy)
         self.register("bayesian", DirichletBayesianStrategy)
+        self.register("thompson", ThompsonSamplingStrategy)
+        self.register("regret-matching", RegretMatchingStrategy)
+        self.register("hedge", HedgeStrategy)
+        self.register("level-k", LevelKStrategy)
+        self.register("bandit", BanditStrategy)
 
     def register(self, name: str, strategy_class: Type[ReceiverStrategy]) -> None:
         """Register a strategy class under a given name."""

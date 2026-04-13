@@ -104,3 +104,53 @@ class DirichletBayesianStrategy(ReceiverStrategy):
             total = sum(self._alpha[q].values()) or 1.0
             result[q] = {s: self._alpha[q][s] / total for s in _SIGNALS}
         return result
+
+
+class ThompsonSamplingStrategy(DirichletBayesianStrategy):
+    """
+    Bayesian exploration via posterior sampling.
+
+    At decision time, samples a garbling matrix from the Dirichlet posterior
+    rather than using the posterior mean.  This provides natural exploration
+    under uncertainty while converging to the same decisions as
+    DirichletBayesianStrategy as evidence accumulates.
+
+    Args:
+        prior_strength: Dirichlet concentration parameter.
+        forgetting_factor: Exponential decay of prior alpha values on update.
+        sample_count: Number of samples to average (1 = pure Thompson).
+    """
+
+    def __init__(
+        self,
+        prior_strength: float = 1.0,
+        forgetting_factor: float = 1.0,
+        sample_count: int = 1,
+    ) -> None:
+        super().__init__(prior_strength=prior_strength, forgetting_factor=forgetting_factor)
+        self._sample_count = sample_count
+
+    def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
+        signal_name = signal.name if isinstance(signal, Signal) else str(signal)
+
+        # Average over sampled garbling matrices
+        total_ev = 0.0
+        for _ in range(self._sample_count):
+            # Sample one garbling matrix row per quality from the Dirichlet posterior
+            sampled = {}
+            for q in _QUALITIES:
+                alpha_vec = np.array([self._alpha[q][s] for s in _SIGNALS])
+                sample = np.random.dirichlet(alpha_vec)
+                sampled[q] = {s: float(sample[i]) for i, s in enumerate(_SIGNALS)}
+
+            # Bayes: P(quality|signal) ∝ sampled_p(signal|quality) × prior(quality)
+            unnorm = {
+                q: sampled[q].get(signal_name, 1e-9) * _PRIOR[q]
+                for q in _QUALITIES
+            }
+            total = sum(unnorm.values()) or 1.0
+            posterior = {q: unnorm[q] / total for q in _QUALITIES}
+            total_ev += sum(posterior[q] * _PAYOFFS[q] for q in _QUALITIES)
+
+        avg_ev = total_ev / self._sample_count
+        return Action.BUY if avg_ev > 0 else Action.PASS
