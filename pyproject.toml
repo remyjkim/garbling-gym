@@ -71,3 +71,6 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=garbling_gym --cov-report=term-missing"
+markers = [
+    "live_llm: marks tests that call a real LLM API (deselect with -m 'not live_llm')",
+]
