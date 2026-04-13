@@ -116,6 +116,7 @@ class Game:
             'action': action.name,
             'sender_payoff': sender_payoff,
             'receiver_payoff': receiver_payoff,
+            'receiver_diagnostics': self.receiver.strategy.get_diagnostics(),
         }
         self.state.history.append(round_record)
 
