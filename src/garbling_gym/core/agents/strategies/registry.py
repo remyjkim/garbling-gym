@@ -9,6 +9,8 @@ from .bayesian import DirichletBayesianStrategy, ThompsonSamplingStrategy
 from .regret import RegretMatchingStrategy, HedgeStrategy
 from .game_theoretic import LevelKStrategy
 from .bandit import BanditStrategy
+from .llm_hybrid import HybridLLMStrategy
+from .llm_pure import PureLLMStrategy
 
 
 class ReceiverStrategyRegistry:
@@ -28,6 +30,8 @@ class ReceiverStrategyRegistry:
         self.register("hedge", HedgeStrategy)
         self.register("level-k", LevelKStrategy)
         self.register("bandit", BanditStrategy)
+        self.register("hybrid-llm", HybridLLMStrategy)
+        self.register("pure-llm", PureLLMStrategy)
 
     def register(self, name: str, strategy_class: Type[ReceiverStrategy]) -> None:
         """Register a strategy class under a given name."""
