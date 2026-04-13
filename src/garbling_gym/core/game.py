@@ -93,11 +93,20 @@ class Game:
         # 5. Compute payoffs
         sender_payoff, receiver_payoff = self.compute_payoffs(action, true_quality)
 
-        # 6. Update state
+        # 6. Let receiver learn from the revealed outcome
+        self.receiver.learn(
+            signal=signal,
+            action=action,
+            true_quality=true_quality,
+            sender_payoff=sender_payoff,
+            receiver_payoff=receiver_payoff,
+        )
+
+        # 7. Update state
         self.state.sender_total += sender_payoff
         self.state.receiver_total += receiver_payoff
 
-        # 7. Record round
+        # 8. Record round
         round_record = {
             'round': round_num,
             'quality': true_quality.name,

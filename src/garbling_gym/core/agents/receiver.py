@@ -3,10 +3,12 @@
 
 import random
 import numpy as np
-from typing import List, Dict, Tuple, Literal
+from typing import List, Dict, Optional, Tuple, Literal
 from pydantic import BaseModel, Field
 from .llm import LLMAgent
-from ..types import Signal, Action
+from .strategies import ReceiverStrategy
+from .strategies.legacy_heuristic import LegacyHeuristicStrategy
+from ..types import Signal, Action, AssetQuality
 
 
 class ActionChoice(BaseModel):
@@ -24,8 +26,9 @@ class ReceiverAgent(LLMAgent):
     Goal: Maximize expected utility by correctly inferring quality from signals.
     """
 
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-4o-mini", strategy: Optional[ReceiverStrategy] = None):
         super().__init__("Receiver", model)
+        self.strategy: ReceiverStrategy = strategy if strategy is not None else LegacyHeuristicStrategy()
         self.system_prompt = """You are the RECEIVER in an information economics game.
 
 BACKGROUND - VALUE OF INFORMATION:
@@ -110,13 +113,24 @@ Your decision:"""
                 return Action.BUY if result.action == "BUY" else Action.PASS
             except Exception as e:
                 print(f"  [{self.role}] LLM failed, using fallback: {e}")
-                return self._parse_action(self._fallback_response(user_prompt))
+                return self.strategy.choose_action(signal, round_num, total_rounds)
         else:
-            return self._parse_action(self._fallback_response(user_prompt))
+            return self.strategy.choose_action(signal, round_num, total_rounds)
 
     def decide(self, observation, history: List[Dict], round_num: int, total_rounds: int):
         """Implement abstract decide method by delegating to make_decision"""
         return self.make_decision(observation, history, round_num, total_rounds)
+
+    def learn(
+        self,
+        signal: Signal,
+        action: Action,
+        true_quality: AssetQuality,
+        sender_payoff: float,
+        receiver_payoff: float,
+    ) -> None:
+        """Update the receiver strategy with the outcome of a completed round."""
+        self.strategy.update(signal, action, true_quality, sender_payoff, receiver_payoff)
 
     def _summarize_history(self, history: List[Dict]) -> str:
         """Create a summary of recent game history"""

@@ -52,17 +52,20 @@ class AgentFactory:
         """
         return SenderAgent(model=model)
 
-    def create_receiver(self, model: str = "gpt-4o-mini") -> ReceiverAgent:
+    def create_receiver(self, model: str = "gpt-4o-mini", strategy_name: str = "heuristic") -> ReceiverAgent:
         """
         Create a receiver agent.
 
         Args:
             model: LLM model to use
+            strategy_name: Name of receiver learning strategy to use
 
         Returns:
             ReceiverAgent instance
         """
-        return ReceiverAgent(model=model)
+        from .strategies.registry import receiver_strategy_registry
+        strategy = receiver_strategy_registry.get(strategy_name)
+        return ReceiverAgent(model=model, strategy=strategy)
 
     def create_agent(self, agent_type: str, **kwargs) -> Agent:
         """

@@ -46,6 +46,12 @@ console = Console()
     help='LLM model to use (e.g., gpt-4o-mini)'
 )
 @click.option(
+    '--receiver-strategy',
+    type=str,
+    default=None,
+    help='Receiver learning strategy (e.g., heuristic, bayesian)'
+)
+@click.option(
     '--verbose/--quiet', '-v/-q',
     default=True,
     help='Show detailed output'
@@ -56,7 +62,7 @@ console = Console()
     help='Save results to run_results/'
 )
 @click.pass_context
-def run(ctx, rounds, config, name, llm, llm_model, verbose, save):
+def run(ctx, rounds, config, name, llm, llm_model, receiver_strategy, verbose, save):
     """
     Run a single garbling economics game.
 
@@ -83,6 +89,8 @@ def run(ctx, rounds, config, name, llm, llm_model, verbose, save):
         overrides['use_llm'] = llm
     if llm_model is not None:
         overrides['llm_model'] = llm_model
+    if receiver_strategy is not None:
+        overrides['receiver_strategy'] = receiver_strategy
 
     if overrides:
         game_config = merge_config_overrides(game_config, overrides)
@@ -97,7 +105,10 @@ def run(ctx, rounds, config, name, llm, llm_model, verbose, save):
 
     # Create agents
     sender = agent_factory.create_sender(model=game_config.llm_model)
-    receiver = agent_factory.create_receiver(model=game_config.llm_model)
+    receiver = agent_factory.create_receiver(
+        model=game_config.llm_model,
+        strategy_name=game_config.receiver_strategy,
+    )
 
     # Create and run game
     game = Game(game_config, sender=sender, receiver=receiver)

@@ -30,6 +30,9 @@ class GameConfig:
     # LLM model to use if use_llm is True
     llm_model: str = "gpt-4o-mini"
 
+    # Receiver learning strategy (see ReceiverStrategyRegistry for available names)
+    receiver_strategy: str = "heuristic"
+
     def __post_init__(self):
         """Validate configuration"""
         # Ensure prior is a valid probability distribution
