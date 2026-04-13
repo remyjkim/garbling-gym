@@ -13,12 +13,14 @@
 
 - [Overview](#overview)
 - [What is Garbling?](#what-is-garbling)
+- [How a Single Round Works](#how-a-single-round-works)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
 - [Experiments & Configuration](#experiments--configuration)
 - [Visualization & Analysis](#visualization--analysis)
 - [LLM Integration](#llm-integration)
+- [Design Directions](#design-directions)
 - [Project Structure](#project-structure)
 - [Economic Concepts](#economic-concepts)
 - [References](#references)
@@ -91,6 +93,52 @@ HIGH             0.0     0.0     1.0    ← Still revealed
 This creates a **partial ordering** over information structures: the **Blackwell order**.
 
 **Key Insight:** More information is always better for receivers, but senders with misaligned interests can benefit from strategic garbling.
+
+---
+
+## How a Single Round Works
+
+A game consists of `num_rounds` sequential rounds (default: 20). Each round follows seven steps:
+
+```
+┌─────────┐      ┌────────┐      ┌──────────────┐      ┌──────────┐      ┌──────────┐
+│ 1.Nature │─────>│2.Sender│─────>│ 3.Garbling   │─────>│4.Receiver│─────>│5.Payoffs │
+│ draws    │      │ picks  │      │   matrix     │      │ observes │      │ computed │
+│ quality  │      │strategy│      │ samples      │      │ signal,  │      │          │
+│          │      │        │      │ signal       │      │ decides  │      │          │
+└─────────┘      └────────┘      └──────────────┘      └──────────┘      └──────────┘
+  LOW/MED/HIGH    e.g.             np.random.choice       BUY/PASS       (action,quality)
+  from prior     "pool_low_medium" from matrix row        from signal     → payoff pair
+```
+
+### Step by step
+
+1. **Nature draws quality.** A true asset quality (LOW, MEDIUM, or HIGH) is sampled from the prior distribution (default: 30%/40%/30%) using `random.choices`. This is hidden from the receiver.
+
+2. **Sender chooses a garbling strategy.** The sender knows the true quality and the full history of past rounds. It selects one of the 6 built-in strategies by name (e.g., `"pool_low_medium"`). In heuristic mode, this is a weighted random choice conditioned on quality and recent receiver payoffs. In LLM mode, this is an API call that returns a structured `StrategyChoice`.
+
+3. **The garbling matrix samples a signal.** The chosen strategy's 3×3 stochastic matrix is looked up. The row corresponding to the true quality gives a probability distribution over signals. A single signal (BAD, NEUTRAL, or GOOD) is sampled from that row via `np.random.choice`. For example, if the quality is LOW and the strategy is `aggressive_pooling`, the row `[0.3, 0.4, 0.3]` gives a 30% chance of GOOD — misleading the receiver.
+
+4. **Receiver observes the signal and decides.** The receiver sees **only** the signal token — not the true quality, not which strategy was used. It also has access to the full history of past rounds (including true qualities revealed post-hoc). It decides BUY or PASS. In heuristic mode, this is a Bayesian pipeline: estimate P(signal|quality) from history, compute posterior via Bayes' rule, calculate expected value, apply a sigmoid decision threshold. In LLM mode, this is an API call returning a structured `ActionChoice`.
+
+5. **Payoffs are computed.** The payoff depends on (action, true quality). The sender earns +10 on any BUY and 0 on any PASS — regardless of quality. The receiver earns -15 (BUY+LOW), +5 (BUY+MEDIUM), +20 (BUY+HIGH), or 0 (PASS).
+
+6. **Cumulative totals are updated.** Both agents' running payoff totals are incremented.
+
+7. **The round is recorded.** A complete record — quality, strategy name, informativeness score, signal, action, both payoffs — is appended to the game history. Both agents can see this in subsequent rounds.
+
+### What each agent knows
+
+| Agent | At decision time | After the round |
+|-------|-----------------|-----------------|
+| Sender | True quality, full prior history | Everything (already knew quality) |
+| Receiver | Signal token only, full prior history | True quality is revealed post-hoc |
+
+The post-hoc revelation is key: the receiver learns whether it was deceived after each round, enabling it to calibrate trust in future signals.
+
+### The signal channel
+
+The entire communication from sender to receiver is **one of three discrete tokens** per round: BAD, NEUTRAL, or GOOD (~1.58 bits maximum). There is no continuous value, no natural language, no partial disclosure. The sender's expressive power is limited to choosing which of 6 pre-defined probability distributions to sample from.
 
 ---
 
@@ -490,6 +538,18 @@ gg serve  # Dashboard at http://localhost:2718
 
 ## LLM Integration
 
+### What the LLM Does — and Does Not Do
+
+The LLM powers agent **decision-making**, not the garbling itself. This is an important distinction:
+
+| Step | Heuristic mode | LLM mode |
+|------|---------------|----------|
+| Sender picks strategy | Weighted random choice based on quality + history | LLM API call → structured `StrategyChoice` |
+| **Garbling (signal generation)** | **Matrix sample via `np.random.choice`** | **Matrix sample via `np.random.choice`** |
+| Receiver decides action | Bayesian pipeline → sigmoid → stochastic | LLM API call → structured `ActionChoice` |
+
+The garbling step is identical in both modes. The LLM never crafts, modulates, or transmits the signal. It decides *which matrix to use* (sender) and *how to react to a discrete token* (receiver). Two API calls per round, zero of which touch the information transformation.
+
 ### Setup
 
 ```bash
@@ -515,26 +575,48 @@ gg experiment experiments/yaml/llm_sweep.yaml
 
 ### Architecture
 
-- **Structured outputs** via pydantic-ai
-- **Type-safe** with Pydantic models
-- **Graceful fallback** to heuristic agents
+- **Structured outputs** via pydantic-ai — sender returns one of 6 strategy names, receiver returns BUY or PASS
+- **Graceful fallback** to heuristic agents if API is unavailable or call fails
 - **Cost efficient** (~$0.0001 per round with gpt-4o-mini)
-
-### Agent Reasoning
-
-**Sender Agent:**
-- Observes true quality
-- Reasons about optimal garbling strategy
-- Considers receiver's likely beliefs
-- Outputs structured `StrategyChoice`
-
-**Receiver Agent:**
-- Observes garbled signal
-- Updates beliefs via Bayes' rule
-- Reasons about expected value
-- Outputs structured `ActionChoice`
+- Both agents receive the last 5 rounds of history as context, plus system prompts explaining the game theory
 
 See [LLM_SETUP.md](LLM_SETUP.md) for detailed documentation.
+
+---
+
+## Design Directions
+
+### LLM-as-Garbler: Natural Language Persuasion
+
+The current architecture treats garbling as a mathematical operation (matrix sampling). A natural extension is to make the LLM the garbling mechanism itself — replacing the matrix channel with natural language communication.
+
+**Current flow (matrix garbling):**
+```
+Quality → Sender picks matrix → np.random.choice → discrete token (BAD/NEUTRAL/GOOD) → Receiver
+```
+
+**Proposed flow (LLM garbling):**
+```
+Quality → Sender LLM writes natural language message → free-form text → Receiver LLM → BUY/PASS
+```
+
+In this model, the sender crafts a message about the asset (knowing the true quality), and the receiver reads that message and decides. The garbling *is* the language — what gets emphasized, omitted, framed, or spun. This is closer to real-world persuasion: a seller describing a car, an analyst writing a research note, a company's earnings call.
+
+### Why Both Modes Have Value
+
+| Dimension | Matrix Mode | LLM-as-Garbler Mode |
+|-----------|------------|---------------------|
+| **Models** | Information-theoretic channel | Natural language persuasion |
+| **Measurability** | Exact (informativeness from matrix) | Requires proxy metrics |
+| **Reproducibility** | Deterministic given seed | Stochastic, model-dependent |
+| **Signal space** | 3 discrete tokens | Unbounded text |
+| **Research question** | "Given a known information structure, how do rational agents behave?" | "How well can an LLM strategically persuade another LLM?" |
+
+### Open Questions
+
+- **Sender constraints:** Word count limits? Required templates? Unconstrained free text?
+- **Measuring garbling:** Without a matrix, how do you quantify informativeness? Options include evaluator LLMs, empirical receiver accuracy, or embedding-space analysis.
+- **Architecture:** A `GarblingChannel` interface that both `GarblingStrategy` (matrix) and a future `LLMGarblingChannel` implement, keeping the game loop identical.
 
 ---
 
