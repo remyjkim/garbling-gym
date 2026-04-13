@@ -17,6 +17,7 @@
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
+- [Receiver Strategies](#receiver-strategies)
 - [Experiments & Configuration](#experiments--configuration)
 - [Visualization & Analysis](#visualization--analysis)
 - [LLM Integration](#llm-integration)
@@ -40,7 +41,8 @@ The framework enables:
 - 📊 **Comprehensive analysis** of information quality and outcomes
 - 🔬 **Batch experiments** with parameter sweeps
 - 📈 **Rich visualizations** (ASCII, HTML, interactive dashboards)
-- 🤖 **LLM integration** via pydantic-ai for agent reasoning
+- 🧠 **Pluggable receiver strategies** — Bayesian, regret-based, bandit, game-theoretic, and LLM-powered
+- 🤖 **LLM integration** via OpenRouter for agent reasoning
 - 💾 **Persistent storage** with SQLite indexing for fast queries
 
 ### Example Results
@@ -166,11 +168,11 @@ pip install -e .
 ### With LLM Support
 
 ```bash
-# Install with OpenAI integration
+# Install with LLM dependencies
 uv sync --extra llm
 
-# Configure API key (create .env file)
-echo "OPENAI_API_KEY=sk-your-key-here" > .env
+# Configure OpenRouter API key (create .env file)
+echo "OPENROUTER_API_KEY=sk-or-v1-your-key-here" > .env
 ```
 
 See [LLM_SETUP.md](LLM_SETUP.md) for detailed LLM configuration.
@@ -241,19 +243,22 @@ Run a single garbling economics game.
 gg run [OPTIONS]
 
 Options:
-  -r, --rounds INTEGER        Number of rounds (default: 20)
-  -c, --config PATH          Config file (YAML or Python)
-  -n, --name TEXT            Experiment name
-  --llm/--no-llm             Use LLM agents (requires API key)
-  --llm-model TEXT           Model to use (default: gpt-4o-mini)
-  -v/-q, --verbose/--quiet   Output verbosity
-  --save/--no-save           Save results (default: save)
+  -r, --rounds INTEGER              Number of rounds (default: 20)
+  -c, --config PATH                 Config file (YAML or Python)
+  -n, --name TEXT                   Experiment name
+  --llm/--no-llm                    Use LLM agents (requires API key)
+  --llm-model TEXT                  Model to use (default: gpt-4o-mini) [sender only]
+  --receiver-strategy TEXT          Receiver strategy (default: heuristic)
+  -v/-q, --verbose/--quiet          Output verbosity
+  --save/--no-save                  Save results (default: save)
 
 Examples:
-  gg run                              # Basic game with defaults
-  gg run --rounds 50 --name "test"    # 50 rounds, named run
-  gg run --config exp.yaml            # Load from config file
-  gg run --llm --llm-model gpt-4o     # Use GPT-4
+  gg run                                          # Basic game with defaults
+  gg run --rounds 50 --name "test"                # 50 rounds, named run
+  gg run --receiver-strategy bayesian             # Dirichlet Bayesian receiver
+  gg run --receiver-strategy hedge                # Multiplicative weights receiver
+  gg run --receiver-strategy hybrid-llm           # LLM-powered receiver
+  gg run --config exp.yaml                        # Load from config file
 ```
 
 ### `gg list-runs` - Browse Experiments
@@ -382,6 +387,62 @@ Examples:
   gg serve --mode run                  # Run visualization
   gg serve --port 8080                 # Custom port
   gg serve --mode edit                 # Edit notebooks
+```
+
+---
+
+## Receiver Strategies
+
+The receiver's decision logic is fully pluggable. Select a strategy via `--receiver-strategy` on the CLI or `receiver_strategy` in your config. Each strategy starts fresh for every game and exposes diagnostics captured in the round record.
+
+| Strategy | Class | Description |
+|----------|-------|-------------|
+| `heuristic` | `LegacyHeuristicStrategy` | Laplace-smoothed empirical reliability → Bayesian posterior → sigmoid EV decision (original behavior) |
+| `bayesian` | `DirichletBayesianStrategy` | Dirichlet conjugate prior on the garbling matrix; deterministic Bayes-optimal action on posterior mean |
+| `thompson` | `ThompsonSamplingStrategy` | Same Dirichlet state as `bayesian` but samples the garbling matrix at each decision — balances exploration and exploitation |
+| `regret-matching` | `RegretMatchingStrategy` | Hart & Mas-Colell counterfactual regret minimization; mixed strategy proportional to positive cumulative regrets |
+| `hedge` | `HedgeStrategy` | Freund & Schapire Multiplicative Weights with exp(−η·loss) updates; achieves O(√T ln K) regret bound |
+| `level-k` | `LevelKStrategy` | Level-1 reasoning (E[BUY\|prior] = 3.5 > 0 → always BUY) blended with empirical best-response as observations accumulate |
+| `bandit` | `BanditStrategy` | Per-signal 2-armed bandit; default variant is Sliding-Window UCB; `BanditStrategy(variant="exp3s")` uses adversarial EXP3.S |
+| `hybrid-llm` | `HybridLLMStrategy` | Computes Bayesian analysis in code, passes posterior + history to an LLM for final verdict; falls back to `bayesian` on failure |
+| `pure-llm` | `PureLLMStrategy` | Chain-of-thought prompting with rolling history window; LLM reasons through signal reliability and EV; falls back to `heuristic` on failure |
+
+### Using a Custom Strategy
+
+Implement the `ReceiverStrategy` ABC and register it:
+
+```python
+from garbling_gym.core.agents.strategies import ReceiverStrategy
+from garbling_gym.core.agents.strategies.registry import receiver_strategy_registry
+from garbling_gym.core.types import Action, AssetQuality, Signal
+
+class MyStrategy(ReceiverStrategy):
+    def choose_action(self, signal, round_num, total_rounds) -> Action:
+        ...
+    def update(self, signal, action, true_quality, sender_payoff, receiver_payoff) -> None:
+        ...
+    def reset(self) -> None:
+        ...
+    def get_diagnostics(self) -> dict:
+        return {}
+
+receiver_strategy_registry.register("my-strategy", MyStrategy)
+```
+
+### LLM Strategies Setup
+
+The `hybrid-llm` and `pure-llm` strategies use OpenRouter. Wire them with `make_openrouter_caller`:
+
+```python
+import os
+from garbling_gym.core.agents.strategies.openrouter import make_openrouter_caller
+from garbling_gym.core.agents.strategies.llm_hybrid import HybridLLMStrategy
+
+caller = make_openrouter_caller(
+    model="nvidia/llama-3.1-nemotron-70b-instruct",
+    api_key=os.environ["OPENROUTER_API_KEY"],
+)
+strategy = HybridLLMStrategy(llm_caller=caller)
 ```
 
 ---
@@ -544,11 +605,11 @@ The LLM powers agent **decision-making**, not the garbling itself. This is an im
 
 | Step | Heuristic mode | LLM mode |
 |------|---------------|----------|
-| Sender picks strategy | Weighted random choice based on quality + history | LLM API call → structured `StrategyChoice` |
+| Sender picks strategy | Weighted random choice based on quality + history | LLM API call → strategy name |
 | **Garbling (signal generation)** | **Matrix sample via `np.random.choice`** | **Matrix sample via `np.random.choice`** |
-| Receiver decides action | Bayesian pipeline → sigmoid → stochastic | LLM API call → structured `ActionChoice` |
+| Receiver decides action | Strategy-specific (Bayesian, regret, etc.) | `hybrid-llm` or `pure-llm` strategy |
 
-The garbling step is identical in both modes. The LLM never crafts, modulates, or transmits the signal. It decides *which matrix to use* (sender) and *how to react to a discrete token* (receiver). Two API calls per round, zero of which touch the information transformation.
+The garbling step is identical in all modes. The LLM never crafts, modulates, or transmits the signal itself.
 
 ### Setup
 
@@ -556,29 +617,39 @@ The garbling step is identical in both modes. The LLM never crafts, modulates, o
 # Install LLM dependencies
 uv sync --extra llm
 
-# Configure API key in .env
-echo "OPENAI_API_KEY=sk-your-key-here" > .env
+# Configure OpenRouter API key in .env
+echo "OPENROUTER_API_KEY=sk-or-v1-your-key-here" > .env
 ```
 
 ### Usage
 
 ```bash
-# Use LLM agents
-gg run --llm
+# LLM receiver with Bayesian context (hybrid)
+gg run --receiver-strategy hybrid-llm
 
-# Specify model
-gg run --llm --llm-model gpt-4o
+# LLM receiver with chain-of-thought prompting (pure)
+gg run --receiver-strategy pure-llm
 
-# Batch experiment with LLM
+# Batch experiment with LLM receiver
 gg experiment experiments/yaml/llm_sweep.yaml
 ```
 
 ### Architecture
 
-- **Structured outputs** via pydantic-ai — sender returns one of 6 strategy names, receiver returns BUY or PASS
-- **Graceful fallback** to heuristic agents if API is unavailable or call fails
-- **Cost efficient** (~$0.0001 per round with gpt-4o-mini)
-- Both agents receive the last 5 rounds of history as context, plus system prompts explaining the game theory
+The two LLM receiver strategies use OpenRouter via a simple `requests`-based caller:
+
+```python
+from garbling_gym.core.agents.strategies.openrouter import make_openrouter_caller
+
+caller = make_openrouter_caller(
+    model="nvidia/llama-3.1-nemotron-70b-instruct",
+    api_key=os.environ["OPENROUTER_API_KEY"],
+)
+```
+
+- **`hybrid-llm`**: Pre-computes Dirichlet posterior and E[BUY] in code, enriches the prompt with these statistics, and asks the LLM for a qualitative final verdict. Falls back to `DirichletBayesianStrategy` on failure.
+- **`pure-llm`**: Passes the raw signal and rolling history window to the LLM with chain-of-thought instructions. Falls back to `LegacyHeuristicStrategy` on failure.
+- **Caller interface**: `Callable[[system_prompt, user_prompt], response_text]` — easy to swap models or providers.
 
 See [LLM_SETUP.md](LLM_SETUP.md) for detailed documentation.
 
@@ -630,10 +701,20 @@ garbling-sims/
 │   │   ├── config.py           # Configuration
 │   │   ├── agents/             # Agent implementations
 │   │   │   ├── base.py         # Base agent class
-│   │   │   ├── llm.py          # LLM agent base
 │   │   │   ├── sender.py       # Sender agent
-│   │   │   ├── receiver.py     # Receiver agent
-│   │   │   └── registry.py     # Agent factory
+│   │   │   ├── receiver.py     # Receiver agent (delegates to ReceiverStrategy)
+│   │   │   ├── registry.py     # Agent factory
+│   │   │   └── strategies/     # Pluggable receiver strategies
+│   │   │       ├── __init__.py         # ReceiverStrategy ABC
+│   │   │       ├── registry.py         # ReceiverStrategyRegistry
+│   │   │       ├── legacy_heuristic.py # Original Bayesian heuristic
+│   │   │       ├── bayesian.py         # Dirichlet + Thompson sampling
+│   │   │       ├── regret.py           # Regret matching + Hedge
+│   │   │       ├── game_theoretic.py   # Level-k reasoning
+│   │   │       ├── bandit.py           # SW-UCB + EXP3.S
+│   │   │       ├── llm_hybrid.py       # Bayesian + LLM
+│   │   │       ├── llm_pure.py         # CoT LLM
+│   │   │       └── openrouter.py       # OpenRouter caller factory
 │   │   ├── strategies/         # Garbling strategies
 │   │   │   ├── base.py         # Strategy base class
 │   │   │   ├── builtin.py      # Built-in strategies
@@ -745,26 +826,26 @@ informativeness = 1 - (||Γ - I|| / ||uniform - I||)
 ### Run Tests
 
 ```bash
-# All tests
+# All tests (excludes live LLM calls)
 uv run pytest -v
 
-# With coverage
+# Live LLM tests (requires OPENROUTER_API_KEY in .env)
+uv run pytest -m live_llm -v
+
+# Skip live tests explicitly
+uv run pytest -m "not live_llm" -v
+
+# With coverage report
 uv run pytest --cov=garbling_gym --cov-report=html
-
-# Specific test file
-uv run pytest tests/core/test_strategies.py -v
-
-# Integration tests only
-uv run pytest tests/integration/ -v
 ```
 
 ### Test Structure
 
-- **Unit tests** (`tests/core/`): Test individual components
-- **Integration tests** (`tests/integration/`): Test complete workflows
-- **CLI tests** (`tests/cli/`): Test command-line interface
+- **Unit tests** (`tests/core/`): Component-level tests including exact math verification
+- **Integration tests** (`tests/integration/`): Full game workflows for all 9 strategies; live OpenRouter API tests (`pytest.mark.live_llm`)
+- **Math tests** (`tests/core/agents/strategies/test_strategy_math.py`): Deterministic correctness — exact Dirichlet posteriors, regret values, Hedge weight formulas, UCB scores, and property-based invariants via Hypothesis
 
-**Coverage:** 70 tests, 38% overall coverage (46% on core modules)
+**Coverage:** 238 tests, ~50% overall coverage
 
 ---
 
@@ -816,6 +897,6 @@ MIT License - See LICENSE file for details.
 
 ---
 
-**Built with:** Python, pydantic-ai, Click, Rich, Plotly, Marimo
+**Built with:** Python, Click, Rich, Plotly, Marimo, Hypothesis
 
-**Powered by:** Information economics research and love of elegant systems 💡
+**LLM powered by:** OpenRouter (any model via `make_openrouter_caller`)
