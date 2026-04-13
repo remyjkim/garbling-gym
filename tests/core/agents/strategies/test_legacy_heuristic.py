@@ -1,6 +1,8 @@
 # ABOUTME: Tests for LegacyHeuristicStrategy - the existing receiver heuristic as a strategy
 # ABOUTME: Verifies Bayesian decision-making, history accumulation, and reset behavior
 
+import random
+
 import pytest
 from garbling_gym.core.agents.strategies import ReceiverStrategy
 from garbling_gym.core.agents.strategies.legacy_heuristic import LegacyHeuristicStrategy
@@ -61,6 +63,7 @@ class TestLegacyHeuristicStrategy:
 
     def test_good_signal_with_no_history_tends_to_buy(self):
         """With GOOD signal and uninformative prior, E[BUY] > 0, so BUY is favored."""
+        random.seed(42)
         # Run many times to check statistical tendency given stochasticity
         strategy = LegacyHeuristicStrategy()
         buys = sum(
@@ -72,6 +75,7 @@ class TestLegacyHeuristicStrategy:
 
     def test_bad_signal_with_no_history_tends_to_pass(self):
         """With BAD signal and uninformative prior, E[BUY] < 0, so PASS is favored."""
+        random.seed(42)
         strategy = LegacyHeuristicStrategy()
         passes = sum(
             1 for _ in range(200)

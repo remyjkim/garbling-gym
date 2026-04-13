@@ -2,6 +2,7 @@
 # ABOUTME: Verifies posterior sampling behavior, variance under uncertainty, convergence
 
 import pytest
+import numpy as np
 from garbling_gym.core.agents.strategies import ReceiverStrategy
 from garbling_gym.core.agents.strategies.bayesian import (
     DirichletBayesianStrategy,
@@ -28,6 +29,7 @@ class TestThompsonSamplingStrategy:
 
     def test_high_variance_under_uncertainty(self):
         """With few observations, Thompson should produce a mix of BUY and PASS."""
+        np.random.seed(42)
         strategy = ThompsonSamplingStrategy()
         # Only 1 observation — posterior is very diffuse
         strategy.update(Signal.GOOD, Action.BUY, AssetQuality.HIGH, 10.0, 20.0)
@@ -41,6 +43,7 @@ class TestThompsonSamplingStrategy:
 
     def test_converges_toward_bayesian_with_many_observations(self):
         """After many consistent observations, Thompson and Dirichlet should mostly agree."""
+        np.random.seed(42)
         thompson = ThompsonSamplingStrategy()
         bayesian = DirichletBayesianStrategy()
 

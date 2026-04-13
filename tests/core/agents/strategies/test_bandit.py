@@ -1,6 +1,8 @@
 # ABOUTME: Tests for BanditStrategy (SW-UCB and EXP3.S variants)
 # ABOUTME: Verifies exploration, learning, and non-stationarity handling
 
+import random
+
 import pytest
 from garbling_gym.core.agents.strategies import ReceiverStrategy
 from garbling_gym.core.agents.strategies.bandit import BanditStrategy
@@ -23,6 +25,7 @@ class TestBanditStrategySWUCB:
 
     def test_explores_early_with_no_data(self):
         """With no observations, exploration bonus is large — should produce both BUY and PASS."""
+        random.seed(42)
         strategy = BanditStrategy(window_size=10, exploration_constant=2.0)
         actions = [strategy.choose_action(Signal.GOOD, i, 40) for i in range(1, 201)]
         buys = sum(1 for a in actions if a == Action.BUY)
@@ -32,6 +35,7 @@ class TestBanditStrategySWUCB:
 
     def test_learns_to_buy_after_consistent_good_high_signal(self):
         """After many GOOD→HIGH rounds, should reliably BUY on GOOD."""
+        random.seed(42)
         strategy = BanditStrategy(window_size=15, exploration_constant=0.5)
         for i in range(20):
             strategy.update(Signal.GOOD, Action.BUY, AssetQuality.HIGH, 10.0, 20.0)
@@ -41,6 +45,7 @@ class TestBanditStrategySWUCB:
 
     def test_adapts_to_sender_shift_via_window(self):
         """Sliding window forgets old data after sender shifts strategy."""
+        random.seed(42)
         strategy = BanditStrategy(window_size=5, exploration_constant=0.3)
         # First 15 rounds: GOOD → HIGH (good to buy)
         for i in range(15):
@@ -83,6 +88,7 @@ class TestBanditStrategyEXP3S:
 
     def test_adapts_to_signal_quality_correlation(self):
         """EXP3.S variant should learn to BUY on GOOD after consistent GOOD→HIGH rounds."""
+        random.seed(42)
         strategy = BanditStrategy(variant="exp3s", window_size=20)
         for i in range(25):
             strategy.update(Signal.GOOD, Action.BUY, AssetQuality.HIGH, 10.0, 20.0)

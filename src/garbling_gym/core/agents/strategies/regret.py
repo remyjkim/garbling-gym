@@ -132,7 +132,7 @@ class HedgeStrategy(ReceiverStrategy):
         for a in _ACTIONS:
             u = _RECEIVER_PAYOFF[(a, quality_name)]
             loss = (self._U_MAX - u) / self._U_RANGE
-            self._weights[signal_name][a] *= (1.0 - eta) ** loss
+            self._weights[signal_name][a] *= np.exp(-eta * loss)
 
     def reset(self) -> None:
         self._weights = {s: {a: 1.0 for a in _ACTIONS} for s in _SIGNALS}

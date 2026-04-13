@@ -1,6 +1,8 @@
 # ABOUTME: Tests for RegretMatchingStrategy and HedgeStrategy
 # ABOUTME: Verifies counterfactual regret accumulation, uniform start, convergence
 
+import random
+
 import pytest
 import numpy as np
 from garbling_gym.core.agents.strategies import ReceiverStrategy
@@ -18,6 +20,7 @@ class TestRegretMatchingStrategy:
 
     def test_uniform_at_start(self):
         """With no history all regrets are 0, strategy is uniform (50/50)."""
+        random.seed(42)
         strategy = RegretMatchingStrategy()
         n = 1000
         buys = sum(1 for _ in range(n) if strategy.choose_action(Signal.GOOD, 1, 20) == Action.BUY)
@@ -26,6 +29,7 @@ class TestRegretMatchingStrategy:
 
     def test_learns_to_pass_on_bad_signal_after_bad_outcomes(self):
         """After many BAD-signal+LOW-quality rounds, regret for PASS on BAD dominates → PASS."""
+        random.seed(42)
         strategy = RegretMatchingStrategy()
         # BAD signal followed by LOW quality: buying loses -15, passing gives 0
         for _ in range(40):
@@ -77,6 +81,7 @@ class TestHedgeStrategy:
 
     def test_uniform_at_start(self):
         """With equal weights, strategy is roughly 50/50."""
+        random.seed(42)
         strategy = HedgeStrategy()
         n = 1000
         buys = sum(1 for _ in range(n) if strategy.choose_action(Signal.GOOD, 1, 40) == Action.BUY)
@@ -84,6 +89,7 @@ class TestHedgeStrategy:
 
     def test_adapts_to_signal_quality_correlation(self):
         """After learning GOOD→HIGH correlation, Hedge favors BUY on GOOD signal."""
+        random.seed(42)
         strategy = HedgeStrategy(learning_rate=0.1)
         for _ in range(30):
             strategy.update(Signal.GOOD, Action.BUY, AssetQuality.HIGH, 10.0, 20.0)
