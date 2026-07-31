@@ -39,6 +39,7 @@ from .commands.visualize import visualize
 from .commands.compare import compare
 from .commands.export import export
 from .commands.serve import serve
+from .commands.solve import solve
 
 main.add_command(run)
 main.add_command(list_runs)
@@ -47,6 +48,7 @@ main.add_command(visualize)
 main.add_command(compare)
 main.add_command(export)
 main.add_command(serve)
+main.add_command(solve)
 
 
 if __name__ == "__main__":
