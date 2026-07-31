@@ -40,6 +40,10 @@ class Game:
         self.state = GameState()
         self.sender = sender
         self.receiver = receiver
+        # Lazily-computed benchmark bundle, cached because it depends only on
+        # (prior, payoffs) — fixed for this config. Recomputing it on every
+        # play_game() call would be wasteful (it solves the envelope programs).
+        self._benchmarks_cache: Optional[Dict] = None
 
     def sample_quality(self) -> AssetQuality:
         """Sample true asset quality from prior distribution"""
@@ -207,6 +211,11 @@ class Game:
         actual_receiver = self.state.receiver_total
         receiver_regret = perfect_info_receiver - actual_receiver
 
+        # Attach theory benchmarks and the realized empirical channel (Proposal 08).
+        # Both are computed defensively: a solver error must never break a run.
+        benchmarks = self._compute_benchmarks()
+        realized = self._compute_realized()
+
         return GameResults(
             total_rounds=len(history),
             sender_total=self.state.sender_total,
@@ -218,7 +227,44 @@ class Game:
             receiver_regret=receiver_regret,
             perfect_info_benchmark=perfect_info_receiver,
             history=history,
+            benchmarks=benchmarks,
+            realized=realized,
         )
+
+    def _compute_benchmarks(self):
+        """Compute the theory benchmark bundle for this game's config.
+
+        Cached: the bundle depends only on (prior, payoffs), which are fixed
+        for this GameConfig, so it is computed once and reused across calls.
+        Returns a JSON-serializable dict, or None if the solver raises.
+        """
+        if self._benchmarks_cache is not None:
+            return self._benchmarks_cache
+        try:
+            from .theory.benchmarks import compute_benchmarks
+            self._benchmarks_cache = compute_benchmarks(self.config).as_dict()
+            return self._benchmarks_cache
+        except Exception:
+            return None
+
+    def _compute_realized(self):
+        """Estimate the realized empirical channel from this run's history.
+
+        Returns a JSON-serializable dict, or None if estimation raises.
+        """
+        try:
+            import numpy as np
+            from .theory.estimate import estimate_channel
+            from .theory.game_spec import game_spec
+            spec = game_spec(self.config)
+            est = estimate_channel(self.state.history, mu0=spec.mu0)
+            return {
+                "channel": est.L.tolist(),
+                "mutual_information": est.mutual_information,
+                "counts": est.counts.tolist(),
+            }
+        except Exception:
+            return None
 
     def _print_summary(self, summary: GameResults):
         """Print game summary"""

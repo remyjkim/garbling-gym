@@ -68,21 +68,23 @@ def _sender_value_on_grid(grid_mu: np.ndarray, spec: GameSpec) -> np.ndarray:
 def compute_benchmarks(
     config: GameConfig,
     chi_grid: Optional[np.ndarray] = None,
-    grid_n: int = 25,
+    grid_n: int = 20,
 ) -> BenchmarkBundle:
     """Compute the benchmark bundle for a game configuration.
 
     Args:
         config: the game configuration.
         chi_grid: credibility values at which to evaluate the weak-institution
-            curve. Defaults to a 0..1 grid in steps of 0.05.
+            curve. Defaults to a coarse 0..1 grid in steps of 0.1 (11 points) —
+            enough to resolve the curve's shape for auto-attached results; pass
+            a finer grid for analysis figures.
         grid_n: resolution of the simplex grid used for the envelope routines.
 
     Returns:
         A :class:`BenchmarkBundle`.
     """
     if chi_grid is None:
-        chi_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.05), 4)
+        chi_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.1), 4)
 
     spec = game_spec(config)
     grid = SimplexGrid(n=grid_n)
