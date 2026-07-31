@@ -12,8 +12,10 @@ from ...types import Action, AssetQuality, Signal
 _QUALITIES = ("LOW", "MEDIUM", "HIGH")
 _SIGNALS = ("BAD", "NEUTRAL", "GOOD")
 
-_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
-_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
+# Defaults — preserved exactly by DirichletBayesianStrategy.__init__ unless
+# configure() injects values sourced from GameConfig.
+_DEFAULT_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
+_DEFAULT_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
 
 
 class DirichletBayesianStrategy(ReceiverStrategy):
@@ -35,8 +37,15 @@ class DirichletBayesianStrategy(ReceiverStrategy):
     def __init__(self, prior_strength: float = 1.0, forgetting_factor: float = 1.0) -> None:
         self._prior_strength = prior_strength
         self._forgetting = forgetting_factor
+        self._prior: Dict[str, float] = dict(_DEFAULT_PRIOR)
+        self._payoffs: Dict[str, float] = dict(_DEFAULT_PAYOFFS)
         self._alpha: Dict[str, Dict[str, float]] = {}
         self.reset()
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject prior and per-quality BUY payoffs from GameConfig."""
+        self._prior = dict(prior)
+        self._payoffs = {q: receiver_payoffs[("BUY", q)] for q in _QUALITIES}
 
     # ------------------------------------------------------------------
     # ReceiverStrategy interface
@@ -50,13 +59,13 @@ class DirichletBayesianStrategy(ReceiverStrategy):
 
         # Bayes: P(quality | signal) ∝ P(signal | quality) × prior(quality)
         unnorm = {
-            q: p_signal_given_quality[q].get(signal_name, 1e-9) * _PRIOR[q]
+            q: p_signal_given_quality[q].get(signal_name, 1e-9) * self._prior[q]
             for q in _QUALITIES
         }
         total = sum(unnorm.values()) or 1.0
         posterior = {q: unnorm[q] / total for q in _QUALITIES}
 
-        expected_buy = sum(posterior[q] * _PAYOFFS[q] for q in _QUALITIES)
+        expected_buy = sum(posterior[q] * self._payoffs[q] for q in _QUALITIES)
         return Action.BUY if expected_buy > 0 else Action.PASS
 
     def update(
@@ -145,12 +154,12 @@ class ThompsonSamplingStrategy(DirichletBayesianStrategy):
 
             # Bayes: P(quality|signal) ∝ sampled_p(signal|quality) × prior(quality)
             unnorm = {
-                q: sampled[q].get(signal_name, 1e-9) * _PRIOR[q]
+                q: sampled[q].get(signal_name, 1e-9) * self._prior[q]
                 for q in _QUALITIES
             }
             total = sum(unnorm.values()) or 1.0
             posterior = {q: unnorm[q] / total for q in _QUALITIES}
-            total_ev += sum(posterior[q] * _PAYOFFS[q] for q in _QUALITIES)
+            total_ev += sum(posterior[q] * self._payoffs[q] for q in _QUALITIES)
 
         avg_ev = total_ev / self._sample_count
         return Action.BUY if avg_ev > 0 else Action.PASS

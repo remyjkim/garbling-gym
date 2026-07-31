@@ -14,8 +14,8 @@ from ...types import Action, AssetQuality, Signal
 _SIGNALS = ("BAD", "NEUTRAL", "GOOD")
 _ACTIONS = ("BUY", "PASS")
 
-# Receiver payoff u_R(action, quality)
-_RECEIVER_PAYOFF = {
+# Receiver payoff u_R(action, quality) — default; overridable via configure().
+_DEFAULT_RECEIVER_PAYOFF = {
     ("BUY", "LOW"):    -15.0,
     ("BUY", "MEDIUM"):   5.0,
     ("BUY", "HIGH"):    20.0,
@@ -57,11 +57,16 @@ class BanditStrategy(ReceiverStrategy):
         self._window_size = window_size
         self._c = exploration_constant
         self._variant = variant
+        self._payoffs: Dict[Any, float] = dict(_DEFAULT_RECEIVER_PAYOFF)
         # SW-UCB state: per signal, deque of (action_name, reward) tuples
         self._windows: Dict[str, Deque[Tuple[str, float]]] = {}
         # EXP3.S state: per signal, weights per action
         self._weights: Dict[str, Dict[str, float]] = {}
         self.reset()
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject the receiver (action, quality) payoff table from GameConfig."""
+        self._payoffs = dict(receiver_payoffs)
 
     def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
         signal_name = signal.name if isinstance(signal, Signal) else str(signal)
@@ -81,7 +86,7 @@ class BanditStrategy(ReceiverStrategy):
         action_name = action.name
         quality_name = true_quality.name if isinstance(true_quality, AssetQuality) else str(true_quality)
 
-        reward = _RECEIVER_PAYOFF[(action_name, quality_name)]
+        reward = self._payoffs[(action_name, quality_name)]
 
         if self._variant == "sw-ucb":
             win = self._windows[signal_name]

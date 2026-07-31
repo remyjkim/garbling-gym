@@ -108,6 +108,7 @@ def run(ctx, rounds, config, name, llm, llm_model, receiver_strategy, verbose, s
     receiver = agent_factory.create_receiver(
         model=game_config.llm_model,
         strategy_name=game_config.receiver_strategy,
+        config=game_config,
     )
 
     # Create and run game

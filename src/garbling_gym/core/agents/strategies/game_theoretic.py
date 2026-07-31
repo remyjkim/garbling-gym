@@ -11,8 +11,8 @@ from ...types import Action, AssetQuality, Signal
 
 _QUALITIES = ("LOW", "MEDIUM", "HIGH")
 _SIGNALS = ("BAD", "NEUTRAL", "GOOD")
-_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
-_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
+_DEFAULT_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
+_DEFAULT_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
 
 
 class LevelKStrategy(ReceiverStrategy):
@@ -38,8 +38,15 @@ class LevelKStrategy(ReceiverStrategy):
     ) -> None:
         self._max_level = max_level
         self._growth = empirical_weight_growth
+        self._prior: Dict[str, float] = dict(_DEFAULT_PRIOR)
+        self._payoffs: Dict[str, float] = dict(_DEFAULT_PAYOFFS)
         self._history: List[Tuple[str, str]] = []  # (signal_name, quality_name)
         self.reset()
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject prior and per-quality BUY payoffs from GameConfig."""
+        self._prior = dict(prior)
+        self._payoffs = {q: receiver_payoffs[("BUY", q)] for q in _QUALITIES}
 
     def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
         signal_name = signal.name if isinstance(signal, Signal) else str(signal)
@@ -49,7 +56,7 @@ class LevelKStrategy(ReceiverStrategy):
         level1_weight = 1.0 - empirical_weight
 
         # Level-1: uniform garbling → posterior = prior → E[BUY] = 3.5 > 0 always
-        level1_ev = sum(_PRIOR[q] * _PAYOFFS[q] for q in _QUALITIES)  # = 3.5
+        level1_ev = sum(self._prior[q] * self._payoffs[q] for q in _QUALITIES)  # = 3.5
 
         # Empirical best response
         empirical_ev = self._compute_empirical_ev(signal_name)
@@ -88,7 +95,7 @@ class LevelKStrategy(ReceiverStrategy):
         then applies Bayes' rule.
         """
         if not self._history:
-            return sum(_PRIOR[q] * _PAYOFFS[q] for q in _QUALITIES)
+            return sum(self._prior[q] * self._payoffs[q] for q in _QUALITIES)
 
         # Count co-occurrences with Laplace smoothing
         counts: Dict[str, Dict[str, int]] = {
@@ -107,8 +114,8 @@ class LevelKStrategy(ReceiverStrategy):
         }
 
         # Bayes
-        unnorm = {q: p_sig_given_qual[q] * _PRIOR[q] for q in _QUALITIES}
+        unnorm = {q: p_sig_given_qual[q] * self._prior[q] for q in _QUALITIES}
         total = sum(unnorm.values()) or 1.0
         posterior = {q: unnorm[q] / total for q in _QUALITIES}
 
-        return sum(posterior[q] * _PAYOFFS[q] for q in _QUALITIES)
+        return sum(posterior[q] * self._payoffs[q] for q in _QUALITIES)

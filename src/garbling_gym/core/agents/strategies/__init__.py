@@ -2,7 +2,7 @@
 # ABOUTME: Defines the ReceiverStrategy interface all learning modes implement
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from ...types import Action, AssetQuality, Signal
 
@@ -70,3 +70,22 @@ class ReceiverStrategy(ABC):
         Override in subclasses to expose strategy-specific diagnostics.
         """
         return {}
+
+    def configure(
+        self,
+        prior: Dict[str, float],
+        receiver_payoffs: Dict[Tuple[str, str], float],
+    ) -> None:
+        """
+        Inject game parameters (prior and receiver payoffs) sourced from
+        ``GameConfig``.  Default implementation is a no-op: strategies that do
+        not override this keep their module-level defaults, preserving
+        pre-refactor behavior.  Subclasses that reference prior/payoffs in
+        their decision rule override this to store them on ``self``.
+
+        Args:
+            prior: ``{quality_name: probability}`` over ``LOW``/``MEDIUM``/``HIGH``.
+            receiver_payoffs: ``{(action_name, quality_name): payoff}`` for the
+                receiver (``BUY``/``PASS`` × ``LOW``/``MEDIUM``/``HIGH``).
+        """
+        pass

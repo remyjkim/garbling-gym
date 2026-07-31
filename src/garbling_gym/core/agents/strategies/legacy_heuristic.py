@@ -17,7 +17,8 @@ _DEFAULT_RELIABILITY: Dict[str, Dict[str, float]] = {
     "BAD":     {"LOW": 0.5, "MEDIUM": 0.2, "HIGH": 0.05},
 }
 
-_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
+_DEFAULT_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
+_DEFAULT_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
 
 
 class LegacyHeuristicStrategy(ReceiverStrategy):
@@ -33,6 +34,13 @@ class LegacyHeuristicStrategy(ReceiverStrategy):
     def __init__(self) -> None:
         # Each entry: (signal_name, quality_name, receiver_payoff)
         self._history: List[Tuple[str, str, float]] = []
+        self._prior: Dict[str, float] = dict(_DEFAULT_PRIOR)
+        self._payoffs: Dict[str, float] = dict(_DEFAULT_PAYOFFS)
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject prior and per-quality BUY payoffs from GameConfig."""
+        self._prior = dict(prior)
+        self._payoffs = {q: receiver_payoffs[("BUY", q)] for q in ("LOW", "MEDIUM", "HIGH")}
 
     def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
         signal_name = signal.name if isinstance(signal, Signal) else str(signal)
@@ -41,9 +49,9 @@ class LegacyHeuristicStrategy(ReceiverStrategy):
         posterior = self._compute_posterior(signal_name, reliability)
 
         expected_buy = (
-            posterior["LOW"] * (-15)
-            + posterior["MEDIUM"] * 5
-            + posterior["HIGH"] * 20
+            posterior["LOW"] * self._payoffs["LOW"]
+            + posterior["MEDIUM"] * self._payoffs["MEDIUM"]
+            + posterior["HIGH"] * self._payoffs["HIGH"]
         )
 
         # Risk aversion based on recent payoffs
@@ -109,9 +117,9 @@ class LegacyHeuristicStrategy(ReceiverStrategy):
     ) -> Dict[str, float]:
         """Compute P(quality | signal) via Bayes' rule."""
         unnormalized = {
-            q: likelihood.get(q, 0.33) * _PRIOR[q] for q in ("LOW", "MEDIUM", "HIGH")
+            q: likelihood.get(q, 0.33) * self._prior[q] for q in ("LOW", "MEDIUM", "HIGH")
         }
         total = sum(unnormalized.values())
         if total == 0:
-            return dict(_PRIOR)
+            return dict(self._prior)
         return {q: v / total for q, v in unnormalized.items()}
