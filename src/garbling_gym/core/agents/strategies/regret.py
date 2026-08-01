@@ -14,8 +14,8 @@ _QUALITIES = ("LOW", "MEDIUM", "HIGH")
 _SIGNALS = ("BAD", "NEUTRAL", "GOOD")
 _ACTIONS = ("BUY", "PASS")
 
-# Receiver payoff u_R(action, quality)
-_RECEIVER_PAYOFF = {
+# Receiver payoff u_R(action, quality) — default; overridable via configure().
+_DEFAULT_RECEIVER_PAYOFF = {
     ("BUY", "LOW"):    -15.0,
     ("BUY", "MEDIUM"):   5.0,
     ("BUY", "HIGH"):    20.0,
@@ -36,7 +36,12 @@ class RegretMatchingStrategy(ReceiverStrategy):
 
     def __init__(self) -> None:
         self._regret: Dict[str, Dict[str, float]] = {}
+        self._payoffs: Dict[Any, float] = dict(_DEFAULT_RECEIVER_PAYOFF)
         self.reset()
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject the receiver (action, quality) payoff table from GameConfig."""
+        self._payoffs = dict(receiver_payoffs)
 
     def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
         signal_name = signal.name if isinstance(signal, Signal) else str(signal)
@@ -61,10 +66,10 @@ class RegretMatchingStrategy(ReceiverStrategy):
         action_name = action.name
         quality_name = true_quality.name if isinstance(true_quality, AssetQuality) else str(true_quality)
 
-        actual_u = _RECEIVER_PAYOFF[(action_name, quality_name)]
+        actual_u = self._payoffs[(action_name, quality_name)]
         # Counterfactual regret: what would each action have earned vs. what we got
         for a in _ACTIONS:
-            counterfactual_u = _RECEIVER_PAYOFF[(a, quality_name)]
+            counterfactual_u = self._payoffs[(a, quality_name)]
             self._regret[signal_name][a] += counterfactual_u - actual_u
 
     def reset(self) -> None:
@@ -102,8 +107,13 @@ class HedgeStrategy(ReceiverStrategy):
     def __init__(self, learning_rate: Optional[float] = None) -> None:
         self._lr = learning_rate
         self._weights: Dict[str, Dict[str, float]] = {}
+        self._payoffs: Dict[Any, float] = dict(_DEFAULT_RECEIVER_PAYOFF)
         self._round = 0
         self.reset()
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject the receiver (action, quality) payoff table from GameConfig."""
+        self._payoffs = dict(receiver_payoffs)
 
     def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
         signal_name = signal.name if isinstance(signal, Signal) else str(signal)
@@ -130,7 +140,7 @@ class HedgeStrategy(ReceiverStrategy):
 
         # Full-information losses (normalized to [0, 1])
         for a in _ACTIONS:
-            u = _RECEIVER_PAYOFF[(a, quality_name)]
+            u = self._payoffs[(a, quality_name)]
             loss = (self._U_MAX - u) / self._U_RANGE
             self._weights[signal_name][a] *= np.exp(-eta * loss)
 

@@ -108,6 +108,7 @@ def run(ctx, rounds, config, name, llm, llm_model, receiver_strategy, verbose, s
     receiver = agent_factory.create_receiver(
         model=game_config.llm_model,
         strategy_name=game_config.receiver_strategy,
+        config=game_config,
     )
 
     # Create and run game
@@ -136,15 +137,28 @@ def run(ctx, rounds, config, name, llm, llm_model, receiver_strategy, verbose, s
 
         console.print(f"[green]✓[/green] Results saved to: {run_path}")
         console.print(f"[green]✓[/green] Run ID: [bold]{run_id}[/bold]")
-
-        # Show quick summary
-        console.print("\n[bold]Quick Summary[/bold]")
-        console.print(f"  Sender Total:   {results.sender_total:+.0f}")
-        console.print(f"  Receiver Total: {results.receiver_total:+.0f}")
-        console.print(f"  Buy Rate:       {results.buy_rate:.1%}")
-        console.print(f"  Informativeness: {results.avg_informativeness:.2f}")
-        console.print(f"  Duration:       {duration:.1f}s")
-
         console.print(f"\nView details: [bold]gg visualize {run_id}[/bold]")
+
+    # Show quick summary (always, whether or not results were saved).
+    console.print("\n[bold]Quick Summary[/bold]")
+    console.print(f"  Sender Total:   {results.sender_total:+.0f}")
+    console.print(f"  Receiver Total: {results.receiver_total:+.0f}")
+    console.print(f"  Buy Rate:       {results.buy_rate:.1%}")
+    console.print(f"  Informativeness: {results.avg_informativeness:.2f}")
+    console.print(f"  Duration:       {duration:.1f}s")
+
+    # Surface the theory benchmarks (Proposal 08): where did the realized
+    # sender value land relative to the computed ladder?
+    if results.benchmarks:
+        b = results.benchmarks
+        console.print("\n[bold]Theory Benchmarks[/bold] "
+                      f"(qcav={b.get('qcav', float('nan')):.2f} "
+                      f"< cav={b.get('cav', float('nan')):.2f}; "
+                      f"value of commitment={b.get('value_of_commitment', 0.0):+.2f})")
+        realized_per_round = results.sender_total / max(results.total_rounds, 1)
+        console.print(f"  Realized sender/round: {realized_per_round:+.2f} "
+                      f"(vs babbling {b.get('babbling', float('nan')):.2f})")
+    if results.realized and results.realized.get("mutual_information") is not None:
+        console.print(f"  Realized I(theta;s): {results.realized['mutual_information']:.3f} nats")
 
     return results

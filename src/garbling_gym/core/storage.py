@@ -252,6 +252,8 @@ class ResultsStore:
                 'strategies_used': results.strategies_used,
                 'quality_stats': results.quality_stats,
             },
+            'benchmarks': results.benchmarks,
+            'realized': results.realized,
             'history': results.history
         }
 

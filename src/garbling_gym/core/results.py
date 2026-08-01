@@ -2,7 +2,7 @@
 # ABOUTME: Structures for round results and complete game summaries
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -31,3 +31,9 @@ class GameResults:
     receiver_regret: float
     perfect_info_benchmark: float
     history: List[RoundResult] = field(default_factory=list)
+    # Theory benchmarks (Proposal 08): the solver's computed ground-truth ladder
+    # for this game's (prior, payoffs). None if the solver could not run.
+    benchmarks: Optional[Dict[str, Any]] = None
+    # Realized empirical channel estimated from this run's history, plus its
+    # information-theoretic summary. None if not computed.
+    realized: Optional[Dict[str, Any]] = None

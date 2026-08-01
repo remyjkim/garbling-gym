@@ -217,6 +217,8 @@ def _create_game_config(exp_config: Dict[str, Any]) -> GameConfig:
         config_kwargs['use_llm'] = exp_config['llm']
     if 'llm_model' in exp_config:
         config_kwargs['llm_model'] = exp_config['llm_model']
+    if 'receiver_strategy' in exp_config:
+        config_kwargs['receiver_strategy'] = exp_config['receiver_strategy']
 
     return GameConfig(**config_kwargs)
 
@@ -225,7 +227,11 @@ def _run_single_experiment(config: GameConfig, exp_config: Dict[str, Any]) -> Di
     """Run a single experiment and return results."""
     # Create agents using the factory
     sender = agent_factory.create_sender(model=config.llm_model)
-    receiver = agent_factory.create_receiver(model=config.llm_model)
+    receiver = agent_factory.create_receiver(
+        model=config.llm_model,
+        strategy_name=config.receiver_strategy,
+        config=config,
+    )
 
     # Run the game
     game = Game(config, sender=sender, receiver=receiver)

@@ -1,10 +1,33 @@
 # ABOUTME: Agent factory for creating and managing agents
 # ABOUTME: Provides centralized agent instantiation with extensibility
 
-from typing import Dict, Type
+from typing import Dict, Tuple, Type
 from .base import Agent
 from .sender import SenderAgent
 from .receiver import ReceiverAgent
+
+
+def _configure_strategy(strategy, config) -> None:
+    """
+    Inject the configured prior and receiver payoffs into a strategy.
+
+    Builds the ``{(action_name, quality_name): receiver_payoff}`` table from
+    ``config.payoffs`` and the name-keyed prior from ``config.prior``, then
+    calls ``strategy.configure(...)``.  Any exception is swallowed so that a
+    strategy that does not support ``configure`` (or a config missing payoffs)
+    silently keeps its defaults — preserving backward compatibility.
+    """
+    try:
+        from ..types import Action, AssetQuality
+        prior = {q.name: p for q, p in config.prior.items()}
+        payoffs: Dict[Tuple[str, str], float] = {}
+        for action in Action:
+            for quality in AssetQuality:
+                _sender, receiver = config.payoffs.get_payoffs(action, quality)
+                payoffs[(action.name, quality.name)] = receiver
+        strategy.configure(prior=prior, receiver_payoffs=payoffs)
+    except Exception:
+        pass
 
 
 class AgentFactory:
@@ -52,19 +75,30 @@ class AgentFactory:
         """
         return SenderAgent(model=model)
 
-    def create_receiver(self, model: str = "gpt-4o-mini", strategy_name: str = "heuristic") -> ReceiverAgent:
+    def create_receiver(
+        self,
+        model: str = "gpt-4o-mini",
+        strategy_name: str = "heuristic",
+        config: "object | None" = None,
+    ) -> ReceiverAgent:
         """
         Create a receiver agent.
 
         Args:
             model: LLM model to use
             strategy_name: Name of receiver learning strategy to use
+            config: Optional ``GameConfig``; when provided, its prior and
+                receiver payoffs are injected into the strategy via
+                ``configure()`` so the strategy uses the configured game
+                parameters rather than module defaults.
 
         Returns:
             ReceiverAgent instance
         """
         from .strategies.registry import receiver_strategy_registry
         strategy = receiver_strategy_registry.get(strategy_name)
+        if config is not None:
+            _configure_strategy(strategy, config)
         return ReceiverAgent(model=model, strategy=strategy)
 
     def create_agent(self, agent_type: str, **kwargs) -> Agent:

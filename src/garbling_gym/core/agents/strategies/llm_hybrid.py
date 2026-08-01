@@ -10,8 +10,8 @@ from ...types import Action, AssetQuality, Signal
 
 _QUALITIES = ("LOW", "MEDIUM", "HIGH")
 _SIGNALS = ("BAD", "NEUTRAL", "GOOD")
-_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
-_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
+_DEFAULT_PRIOR = {"LOW": 0.3, "MEDIUM": 0.4, "HIGH": 0.3}
+_DEFAULT_PAYOFFS = {"LOW": -15.0, "MEDIUM": 5.0, "HIGH": 20.0}
 
 _SYSTEM_PROMPT = """You are the RECEIVER in an information economics game.
 You will receive a quantitative Bayesian analysis computed from the game history.
@@ -51,8 +51,21 @@ class HybridLLMStrategy(ReceiverStrategy):
         self._fallback = fallback_strategy or DirichletBayesianStrategy(prior_strength=prior_strength)
         self._window = history_window
         self._bayesian = DirichletBayesianStrategy(prior_strength=prior_strength)
+        self._prior: Dict[str, float] = dict(_DEFAULT_PRIOR)
+        self._payoffs: Dict[str, float] = dict(_DEFAULT_PAYOFFS)
         # Raw history for prompt construction
         self._history: List[Tuple[str, str, str, float]] = []  # signal, action, quality, receiver_payoff
+
+    def configure(self, prior, receiver_payoffs) -> None:
+        """Inject prior and per-quality BUY payoffs from GameConfig.
+
+        Propagates to the wrapped Bayesian state and fallback so they use the
+        same game parameters.
+        """
+        self._prior = dict(prior)
+        self._payoffs = {q: receiver_payoffs[("BUY", q)] for q in _QUALITIES}
+        self._bayesian.configure(prior, receiver_payoffs)
+        self._fallback.configure(prior, receiver_payoffs)
 
     def choose_action(self, signal: Any, round_num: int, total_rounds: int) -> Action:
         if self._llm_caller is None:
@@ -97,10 +110,10 @@ class HybridLLMStrategy(ReceiverStrategy):
     def _build_prompt(self, signal_name: str, round_num: int, total_rounds: int) -> str:
         # Compute Bayesian analysis
         pm = self._bayesian._posterior_mean()
-        unnorm = {q: pm[q].get(signal_name, 1e-9) * _PRIOR[q] for q in _QUALITIES}
+        unnorm = {q: pm[q].get(signal_name, 1e-9) * self._prior[q] for q in _QUALITIES}
         total = sum(unnorm.values()) or 1.0
         posterior = {q: unnorm[q] / total for q in _QUALITIES}
-        ev_buy = sum(posterior[q] * _PAYOFFS[q] for q in _QUALITIES)
+        ev_buy = sum(posterior[q] * self._payoffs[q] for q in _QUALITIES)
 
         history_lines = ""
         recent = self._history[-self._window:]
